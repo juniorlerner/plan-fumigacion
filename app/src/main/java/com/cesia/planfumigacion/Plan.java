@@ -15,204 +15,160 @@ import java.util.Locale;
 public class Plan {
 
     public static class Evento {
-        public final String fechaIso;
-        public final String titulo;
-        public final String detalle;
-        public final int diasDesdeBase;
+        public String titulo;
+        public String detalle;
+        public String tipo; // base, control, foliar, suelo, engrose, carencia, cosecha
+        public Calendar fecha;
 
-        public Evento(String fechaIso, String titulo, String detalle, int diasDesdeBase) {
-            this.fechaIso = fechaIso;
+        Evento(String titulo, String detalle, String tipo, Calendar fecha) {
             this.titulo = titulo;
             this.detalle = detalle;
-            this.diasDesdeBase = diasDesdeBase;
+            this.tipo = tipo;
+            this.fecha = fecha;
         }
     }
 
-    private static final String CTRL = "Insecticida: en la MAÑANA\nFungicida: en la TARDE";
+    private static final String PREFS = "plan";
+    private static final Locale ES = new Locale("es", "ES");
 
-    /** Genera el plan completo de 90 días desde la cosecha base (patrón de Cesia). */
-    public static List<Evento> generar(String baseIso) {
+    public static void guardarBase(Context ctx, int anio, int mes, int dia) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putInt("anio", anio).putInt("mes", mes).putInt("dia", dia).apply();
+    }
+
+    public static Calendar base(Context ctx) {
+        SharedPreferences p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (!p.contains("anio")) return null;
+        Calendar c = Calendar.getInstance();
+        c.set(p.getInt("anio", 2027), p.getInt("mes", 0), p.getInt("dia", 1), 0, 0, 0);
+        c.set(Calendar.MILLISECOND, 0);
+        return c;
+    }
+
+    private static Calendar sumar(Calendar base, int dias) {
+        Calendar c = (Calendar) base.clone();
+        c.add(Calendar.DAY_OF_YEAR, dias);
+        return c;
+    }
+
+    public static List<Evento> eventos(Calendar base) {
         List<Evento> l = new ArrayList<>();
-        l.add(ev(baseIso, 0, "Cosecha base", "Inicio del ciclo de 90 días"));
-        l.add(ev(baseIso, 5, "Control 1", CTRL));
-        l.add(ev(baseIso, 9, "Nutrición Foliar 1", ""));
-        l.add(ev(baseIso, 19, "Control 2", CTRL));
-        l.add(ev(baseIso, 23, "Nutrición Foliar 2 (abono)", ""));
-        l.add(ev(baseIso, 32, "Nutrición al suelo", ""));
-        l.add(ev(baseIso, 33, "Control 3", CTRL));
-        l.add(ev(baseIso, 39, "Nutrición 2da fase (engrose)", ""));
-        l.add(ev(baseIso, 47, "Control 4", CTRL));
-        l.add(ev(baseIso, 61, "Control 5 - ÚLTIMO control", CTRL));
-        l.add(ev(baseIso, 62, "Empieza la CARENCIA", "No fumigar más hasta la cosecha"));
-        l.add(ev(baseIso, 90, "🌾 COSECHA FINAL", "¡Llegó el gran día de cosechar!"));
+        String ctrl = "Insecticida: en la MAÑANA\nFungicida: en la TARDE";
+        l.add(new Evento("Cosecha base", "Inicio del nuevo ciclo", "base", sumar(base, 0)));
+        l.add(new Evento("Control 1 · Insecticida + Fungicida", ctrl, "control", sumar(base, 5)));
+        l.add(new Evento("Nutrición Foliar 1", "Abono foliar para el brote", "foliar", sumar(base, 9)));
+        l.add(new Evento("Control 2 · Insecticida + Fungicida", ctrl, "control", sumar(base, 19)));
+        l.add(new Evento("Nutrición Foliar 2 (abono)", "Abono foliar", "foliar", sumar(base, 23)));
+        l.add(new Evento("Nutrición al suelo", "Abono al suelo", "suelo", sumar(base, 32)));
+        l.add(new Evento("Control 3 · Insecticida + Fungicida", ctrl, "control", sumar(base, 33)));
+        l.add(new Evento("Nutrición 2da fase (engrose)", "Para que la hoja engrose", "engrose", sumar(base, 39)));
+        l.add(new Evento("Control 4 · Insecticida + Fungicida", ctrl, "control", sumar(base, 47)));
+        l.add(new Evento("Control 5 · ÚLTIMO control", ctrl, "control", sumar(base, 61)));
+        l.add(new Evento("Empieza la carencia", "Sin fumigar hasta la cosecha", "carencia", sumar(base, 62)));
+        l.add(new Evento("¡COSECHA FINAL!", "¡Llegó el gran día de cosechar!", "cosecha", sumar(base, 90)));
         return l;
     }
 
-    private static Evento ev(String baseIso, int dias, String titulo, String detalle) {
-        return new Evento(sumarDias(baseIso, dias), titulo, detalle, dias);
+    public static String fechaCorta(Calendar c) {
+        return new SimpleDateFormat("EEE d MMM", ES).format(c.getTime());
     }
 
-    /** Fase según el día del ciclo: 1 (días 1-30), 2 (31-60), 3 (61-90). */
-    public static int fase(int diasDesdeBase) {
-        if (diasDesdeBase <= 29) return 1;
-        if (diasDesdeBase <= 59) return 2;
-        return 3;
+    public static String fechaLarga(Calendar c) {
+        return new SimpleDateFormat("EEEE d 'de' MMMM", ES).format(c.getTime());
     }
 
-    public static String sumarDias(String fechaIso, int dias) {
-        try {
-            Calendar c = Calendar.getInstance();
-            java.util.Date d = new SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(fechaIso);
-            c.setTime(d);
-            c.add(Calendar.DAY_OF_YEAR, dias);
-            return new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(c.getTime());
-        } catch (Exception e) {
-            return fechaIso;
-        }
+    private static String iso(Calendar c) {
+        return new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(c.getTime());
     }
 
-    public static long millisEn(String fechaIso, int hora) {
-        try {
-            Calendar c = Calendar.getInstance();
-            java.util.Date d = new SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(fechaIso);
-            c.setTime(d);
-            c.set(Calendar.HOUR_OF_DAY, hora);
-            c.set(Calendar.MINUTE, 0);
-            c.set(Calendar.SECOND, 0);
-            c.set(Calendar.MILLISECOND, 0);
-            return c.getTimeInMillis();
-        } catch (Exception e) {
-            return 0;
-        }
+    // ===== Notas por tarea =====
+
+    public static String nota(Context ctx, Calendar base, int i) {
+        SharedPreferences p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        return p.getString("nota_" + iso(base) + "_" + i, "");
     }
 
-    /** "2027-01-30" -> "Sábado 30 de enero de 2027" */
-    public static String fechaLinda(String fechaIso) {
-        try {
-            java.util.Date d = new SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(fechaIso);
-            String s = new SimpleDateFormat("EEEE d 'de' MMMM 'de' yyyy", new Locale("es")).format(d);
-            return s.substring(0, 1).toUpperCase(new Locale("es")) + s.substring(1);
-        } catch (Exception e) {
-            return fechaIso;
-        }
+    public static void guardarNota(Context ctx, Calendar base, int i, String texto) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putString("nota_" + iso(base) + "_" + i, texto).apply();
     }
 
-    public static long diasFaltan(String fechaIso) {
-        long hoy = inicioDelDia(System.currentTimeMillis());
-        long ese = inicioDelDia(millisEn(fechaIso, 12));
-        return Math.round((ese - hoy) / (24.0 * 60 * 60 * 1000));
-    }
+    // ===== Texto para compartir por WhatsApp =====
 
-    private static long inicioDelDia(long millis) {
-        Calendar c = Calendar.getInstance();
-        c.setTimeInMillis(millis);
-        c.set(Calendar.HOUR_OF_DAY, 0);
-        c.set(Calendar.MINUTE, 0);
-        c.set(Calendar.SECOND, 0);
-        c.set(Calendar.MILLISECOND, 0);
-        return c.getTimeInMillis();
-    }
-
-    // ===== Fecha base guardada =====
-
-    public static String getBase(Context ctx) {
-        return ctx.getSharedPreferences("plan", Context.MODE_PRIVATE).getString("baseIso", null);
-    }
-
-    public static void setBase(Context ctx, String baseIso) {
-        ctx.getSharedPreferences("plan", Context.MODE_PRIVATE).edit().putString("baseIso", baseIso).apply();
-    }
-
-    /** Elimina el plan guardado: avisos, fecha base y marcas de hecho. */
-    public static void borrarPlan(Context ctx, String baseIso) {
-        cancelarTodos(ctx);
-        ctx.getSharedPreferences("plan", Context.MODE_PRIVATE).edit().remove("baseIso").apply();
-        SharedPreferences p = prefsEstado(ctx);
-        SharedPreferences.Editor ed = p.edit();
-        for (String clave : p.getAll().keySet()) {
-            if (clave.startsWith("hecho_" + baseIso + "_")) ed.remove(clave);
-        }
-        ed.apply();
-    }
-
-    // ===== Estado "hecho" por plan (según la fecha base) =====
-
-    private static SharedPreferences prefsEstado(Context ctx) {
-        return ctx.getSharedPreferences("estado", Context.MODE_PRIVATE);
-    }
-
-    public static boolean esHecho(Context ctx, String baseIso, int i) {
-        return prefsEstado(ctx).getBoolean("hecho_" + baseIso + "_" + i, false);
-    }
-
-    public static void setHecho(Context ctx, String baseIso, int i, boolean hecho) {
-        prefsEstado(ctx).edit().putBoolean("hecho_" + baseIso + "_" + i, hecho).apply();
-    }
-
-    // ===== Avisos =====
-
-    /** Programa dos avisos por evento futuro: el día anterior 18:00 y el mismo día 07:00. */
-    public static void programarAvisos(Context ctx, String baseIso) {
-        AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
-        if (am == null || baseIso == null) return;
-        List<Evento> eventos = generar(baseIso);
-        long ahora = System.currentTimeMillis();
-        for (int i = 0; i < eventos.size(); i++) {
-            if (esHecho(ctx, baseIso, i)) continue;
-            Evento e = eventos.get(i);
-            long antes = millisEn(e.fechaIso, 18) - 24L * 60 * 60 * 1000;
-            if (antes > ahora) {
-                programar(am, ctx, i * 10 + 1, antes,
-                        "🌱 Mañana toca: " + e.titulo, textoAviso(e));
-            }
-            long mismoDia = millisEn(e.fechaIso, 7);
-            if (mismoDia > ahora) {
-                programar(am, ctx, i * 10 + 2, mismoDia,
-                        "🚜 Hoy toca: " + e.titulo, textoAviso(e));
+    public static String textoParaCompartir(Calendar base) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("🌿 *MI PLAN DE FUMIGACIÓN*\n");
+        sb.append("Cosecha base: ").append(fechaLarga(base)).append("\n");
+        sb.append("Cosecha final: ").append(fechaLarga(sumar(base, 90))).append("\n\n");
+        for (Evento e : eventos(base)) {
+            sb.append("• ").append(fechaCorta(e.fecha)).append(" — ").append(e.titulo).append("\n");
+            if (e.tipo.equals("control")) {
+                sb.append("   Insecticida en la mañana · Fungicida en la tarde\n");
             }
         }
+        sb.append("\n🌿 ¡Buena cosecha!");
+        return sb.toString();
     }
 
-    /** Cancela todos los avisos posibles (al crear un plan nuevo). */
-    public static void cancelarTodos(Context ctx) {
-        AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
-        if (am == null) return;
-        for (int i = 0; i < 20; i++) {
-            for (int suf : new int[]{1, 2}) {
-                Intent intent = new Intent(ctx, AvisoReceiver.class);
-                PendingIntent pi = PendingIntent.getBroadcast(ctx, i * 10 + suf, intent,
-                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-                am.cancel(pi);
-            }
-        }
-    }
+    // ===== Avisos (notificaciones) =====
 
-    /** Cancela los dos avisos de una tarea (al marcarla hecha). */
-    public static void cancelarAvisos(Context ctx, int i) {
-        AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
-        if (am == null) return;
-        for (int suf : new int[]{1, 2}) {
-            Intent intent = new Intent(ctx, AvisoReceiver.class);
-            PendingIntent pi = PendingIntent.getBroadcast(ctx, i * 10 + suf, intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            am.cancel(pi);
-        }
-    }
-
-    private static String textoAviso(Evento e) {
-        String fecha = fechaLinda(e.fechaIso);
-        if (e.detalle == null || e.detalle.isEmpty()) return fecha;
-        return fecha + "\n" + e.detalle;
-    }
-
-    private static void programar(AlarmManager am, Context ctx, int codigo, long cuando,
-                                  String titulo, String texto) {
-        Intent intent = new Intent(ctx, AvisoReceiver.class);
-        intent.putExtra("titulo", titulo);
-        intent.putExtra("texto", texto);
-        intent.putExtra("id", codigo);
-        PendingIntent pi = PendingIntent.getBroadcast(ctx, codigo, intent,
+    private static PendingIntent pendiente(Context ctx, int code, Evento e, String cuando) {
+        Intent it = new Intent(ctx, AvisoReceiver.class);
+        it.putExtra("titulo", e.titulo);
+        it.putExtra("cuando", cuando);
+        it.putExtra("code", code);
+        return PendingIntent.getBroadcast(ctx, code, it,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, cuando, pi);
+    }
+
+    private static void programarUno(Context ctx, AlarmManager am, Calendar fecha, int hora, PendingIntent pi) {
+        Calendar t = (Calendar) fecha.clone();
+        t.set(Calendar.HOUR_OF_DAY, hora);
+        t.set(Calendar.MINUTE, 0);
+        t.set(Calendar.SECOND, 0);
+        if (t.getTimeInMillis() <= System.currentTimeMillis()) return;
+        try {
+            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, t.getTimeInMillis(), pi);
+        } catch (SecurityException ex) {
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, t.getTimeInMillis(), pi);
+        }
+    }
+
+    public static void programarAvisos(Context ctx, Calendar base) {
+        AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+        List<Evento> evs = eventos(base);
+        for (int i = 0; i < evs.size(); i++) {
+            Evento e = evs.get(i);
+            // Aviso el día anterior a las 18:00
+            Calendar antes = (Calendar) e.fecha.clone();
+            antes.add(Calendar.DAY_OF_YEAR, -1);
+            programarUno(ctx, am, antes, 18, pendiente(ctx, i * 2, e, "Mañana toca: "));
+            // Aviso el mismo día a las 07:00
+            programarUno(ctx, am, e.fecha, 7, pendiente(ctx, i * 2 + 1, e, "Hoy toca: "));
+        }
+    }
+
+    public static void cancelarAvisos(Context ctx, Calendar base) {
+        AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+        List<Evento> evs = eventos(base);
+        for (int i = 0; i < evs.size(); i++) {
+            Evento e = evs.get(i);
+            am.cancel(pendiente(ctx, i * 2, e, ""));
+            am.cancel(pendiente(ctx, i * 2 + 1, e, ""));
+        }
+    }
+
+    public static void borrarPlan(Context ctx) {
+        Calendar b = base(ctx);
+        if (b != null) {
+            cancelarAvisos(ctx, b);
+            SharedPreferences p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            SharedPreferences.Editor ed = p.edit();
+            String prefijo = "nota_" + iso(b) + "_";
+            for (String k : p.getAll().keySet()) {
+                if (k.startsWith(prefijo)) ed.remove(k);
+            }
+            ed.remove("anio").remove("mes").remove("dia").apply();
+        }
     }
 }

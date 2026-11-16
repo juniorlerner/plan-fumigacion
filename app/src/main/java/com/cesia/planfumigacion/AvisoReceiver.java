@@ -16,9 +16,11 @@ public class AvisoReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         String titulo = intent.getStringExtra("titulo");
-        String texto = intent.getStringExtra("texto");
-        int id = intent.getIntExtra("id", 1);
-        if (titulo == null) titulo = "Plan de Fumigación";
+        String cuando = intent.getStringExtra("cuando");
+        int code = intent.getIntExtra("code", 1);
+        if (titulo == null) titulo = "Tenés una tarea del plan";
+        if (cuando == null) cuando = "";
+        String texto = cuando + titulo;
 
         NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
@@ -31,18 +33,18 @@ public class AvisoReceiver extends BroadcastReceiver {
 
         Intent abrir = new Intent(context, MainActivity.class);
         abrir.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        PendingIntent pi = PendingIntent.getActivity(context, id, abrir,
+        PendingIntent pi = PendingIntent.getActivity(context, code, abrir,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         Notification.Builder b = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 ? new Notification.Builder(context, CANAL)
                 : new Notification.Builder(context);
         b.setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle(titulo)
+                .setContentTitle("🌿 Plan de Fumigación")
                 .setContentText(texto)
                 .setStyle(new Notification.BigTextStyle().bigText(texto))
                 .setContentIntent(pi)
                 .setAutoCancel(true);
-        nm.notify(id, b.build());
+        nm.notify(code, b.build());
     }
 }
